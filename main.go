@@ -5,7 +5,6 @@ import (
 	"blocker/proto"
 	"context"
 	"fmt"
-	"net"
 	"time"
 
 	"google.golang.org/grpc"
@@ -15,16 +14,6 @@ import (
 func main() {
 	node := node.NewNode()
 	fmt.Println("Start")
-	//opts := []grpc.Option{}
-	//grpcServer, err := gr()
-	opts := []grpc.ServerOption{}
-	grpcSerer := grpc.NewServer(opts...)
-	ln, err := net.Listen("tcp", ":4000")
-	if err != nil {
-		panic(err)
-	}
-	proto.RegisterNodeServer(grpcSerer, node)
-	fmt.Println("node running on port: ", ":4000")
 
 	go func() {
 		for {
@@ -40,11 +29,10 @@ func main() {
 
 		}
 	}()
-	err = grpcSerer.Serve(ln)
+	err := node.Start(":4000")
 	if err != nil {
 		panic(err)
 	}
-
 }
 
 func makeTransaction() {
@@ -55,8 +43,9 @@ func makeTransaction() {
 	c := proto.NewNodeClient(client)
 
 	tx := &proto.Version{
-		Version: "blocker-1",
-		Height:  0,
+		Version:    "blocker-1",
+		Height:     0,
+		ListenAddr: ":123",
 	}
 
 	_, err = c.Handshake(context.Background(), tx)
