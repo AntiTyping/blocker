@@ -4,7 +4,7 @@ import (
 	"blocker/node"
 	"blocker/proto"
 	"context"
-	"fmt"
+	"log"
 	"time"
 
 	"google.golang.org/grpc"
@@ -12,27 +12,22 @@ import (
 )
 
 func main() {
-	node := node.NewNode()
-	fmt.Println("Start")
+	makeNode(":5001", []string{})
+	time.Sleep(time.Second * 1)
+	makeNode(":5002", []string{":5001"})
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 2)
-			makeTransaction()
+	time.Sleep(time.Second * 10)
+}
 
+func makeNode(listenAddr string, bootstrapNodes []string) *node.Node {
+	n := node.NewNode()
+	go n.Start(listenAddr)
+	if len(bootstrapNodes) > 0 {
+		if err := n.BootstrapNetwork(bootstrapNodes); err != nil {
+			log.Fatal(err)
 		}
-	}()
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			makeTransaction()
-
-		}
-	}()
-	err := node.Start(":4000")
-	if err != nil {
-		panic(err)
 	}
+	return n
 }
 
 func makeTransaction() {
