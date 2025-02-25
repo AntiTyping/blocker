@@ -23,7 +23,8 @@ import (
 const blockTime = time.Second * 5
 
 type Mempool struct {
-	txx map[string]*proto.Transaction
+	lock sync.RWMutex
+	txx  map[string]*proto.Transaction
 }
 
 func NewMempool() *Mempool {
@@ -33,6 +34,8 @@ func NewMempool() *Mempool {
 }
 
 func (m *Mempool) Has(tx *proto.Transaction) bool {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	tx, ok := m.txx[hex.EncodeToString(types.HashTransaction(tx))]
 	return ok
 }
@@ -41,11 +44,30 @@ func (m *Mempool) Add(tx *proto.Transaction) bool {
 	if m.Has(tx) {
 		return false
 	}
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.txx[hex.EncodeToString(types.HashTransaction(tx))] = tx
 	return true
 }
 
+func (m *Mempool) Clear() []*proto.Transaction {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	txx := make([]*proto.Transaction, len(m.txx))
+	i := 0
+	for k, v := range m.txx {
+		delete(m.txx, k)
+		txx[i] = v
+		i++
+	}
+
+	return txx
+}
+
 func (m *Mempool) Len() int {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	return len(m.txx)
 }
 
@@ -140,16 +162,14 @@ func (n *Node) Handshake(ctx context.Context, v *proto.Version) (*proto.Version,
 }
 
 func (n *Node) validatorLoop() {
-	n.logger.Infof("[%s} starting validator loop with key %s", n.ListenAddr, n.PrivateKey.Public())
+	n.logger.Infof("[%s} starting validator loop with key %s", n.ListenAddr, hex.EncodeToString(n.PrivateKey.Public().Bytes()))
 	ticker := time.NewTicker(blockTime)
 	for {
 		<-ticker.C
 
-		n.logger.Debugf("[%s} creating a new block with %d transactions", n.ListenAddr, n.mempool.Len())
+		txx := n.mempool.Clear()
 
-		for _, tx := range n.mempool.txx {
-			delete(n.mempool.txx, hex.EncodeToString(types.HashTransaction(tx)))
-		}
+		n.logger.Debugf("[%s} creating a new block with %d transactions", n.ListenAddr, len(txx))
 	}
 }
 

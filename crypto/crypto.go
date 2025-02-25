@@ -4,15 +4,16 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"io"
 )
 
 const (
-	privKeyLen = 64
-	sigLen     = 64
-	pubKeyLen  = 32
-	seedLen    = 32
-	addressLen = 20
+	PrivKeyLen = 64
+	SigLen     = 64
+	PubKeyLen  = 32
+	SeedLen    = 32
+	AddressLen = 20
 )
 
 type PrivateKey struct {
@@ -20,7 +21,7 @@ type PrivateKey struct {
 }
 
 func GeneratePrivateKey() *PrivateKey {
-	seed := make([]byte, seedLen)
+	seed := make([]byte, SeedLen)
 
 	_, err := io.ReadFull(rand.Reader, seed)
 	if err != nil {
@@ -40,7 +41,7 @@ func NewPrivateKeyFromString(seed string) *PrivateKey {
 }
 
 func NewPrivateKeyFromSeed(seed []byte) *PrivateKey {
-	if len(seed) != seedLen {
+	if len(seed) != SeedLen {
 		panic("invalid seed length, must be 32")
 	}
 
@@ -60,7 +61,7 @@ func (p *PrivateKey) Sign(msg []byte) *Signature {
 }
 
 func (p *PrivateKey) Public() *PublicKey {
-	b := make([]byte, pubKeyLen)
+	b := make([]byte, PubKeyLen)
 	copy(b, p.key[32:])
 	return &PublicKey{
 		key: b,
@@ -83,7 +84,7 @@ func (p *PublicKey) Bytes() []byte {
 
 func (p *PublicKey) Address() *Address {
 	return &Address{
-		value: p.key[len(p.key)-addressLen:],
+		value: p.key[len(p.key)-AddressLen:],
 	}
 }
 
@@ -100,8 +101,8 @@ func (s *Signature) Verify(pubKey *PublicKey, msg []byte) bool {
 }
 
 func SignatureFromBytes(b []byte) *Signature {
-	if len(b) != sigLen {
-		panic("wrong signature bytes length")
+	if len(b) != SigLen {
+		panic(fmt.Sprintf("wrong signature bytes length expected %d got %d\n", SigLen, len(b)))
 	}
 	return &Signature{
 		value: b,

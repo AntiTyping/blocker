@@ -4,6 +4,9 @@ build:
 run: build
 	@./bin/blocker
 
+run-race:
+	@go run --race .
+
 test:
 	@go test -v ./...
 

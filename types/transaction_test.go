@@ -16,7 +16,7 @@ func TestHashTransaction(t *testing.T) {
 	input := &proto.TxInput{
 		PrevTxHash:   util.RandomHash(),
 		PrevOutIndex: 0,
-		PublicKey:    fromPubKey.Butes(),
+		PublicKey:    fromPubKey.Bytes(),
 	}
 	output1 := &proto.TxOutput{
 		Amount:    5,

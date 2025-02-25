@@ -21,7 +21,7 @@ func main() {
 	go func() { makeNode(":6000", []string{":5002"}, false) }()
 
 	for {
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Millisecond * 200)
 		makeTransaction()
 	}
 }
