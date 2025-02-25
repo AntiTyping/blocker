@@ -1,8 +1,10 @@
 package main
 
 import (
+	"blocker/crypto"
 	"blocker/node"
 	"blocker/proto"
+	"blocker/util"
 	"context"
 	"time"
 
@@ -11,36 +13,61 @@ import (
 )
 
 func main() {
-	go func() { makeNode(":5001", []string{}) }()
+	go func() { makeNode(":5001", []string{}, true) }()
 	time.Sleep(time.Second * 1)
-	go func() { makeNode(":5002", []string{":5001"}) }()
+	go func() { makeNode(":5002", []string{":5001"}, false) }()
 
 	time.Sleep(4 * time.Second)
-	go func() { makeNode(":6000", []string{":5002"}) }()
+	go func() { makeNode(":6000", []string{":5002"}, false) }()
 
-	time.Sleep(time.Second * 20)
+	for {
+		time.Sleep(time.Second * 2)
+		makeTransaction()
+	}
 }
 
-func makeNode(listenAddr string, bootstrapNodes []string) *node.Node {
-	n := node.NewNode()
+func makeNode(listenAddr string, bootstrapNodes []string, validator bool) *node.Node {
+	cfg := node.ServerConfig{
+		Version:    "blocker-1",
+		ListenAddr: listenAddr,
+	}
+
+	if validator {
+		cfg.PrivateKey = crypto.GeneratePrivateKey()
+	}
+
+	n := node.NewNode(cfg)
 	go n.Start(listenAddr, bootstrapNodes)
 	return n
 }
 
 func makeTransaction() {
-	client, err := grpc.Dial(":4000", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	client, err := grpc.Dial(":5001", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		panic(err)
 	}
 	c := proto.NewNodeClient(client)
 
-	tx := &proto.Version{
-		Version:    "blocker-1",
-		Height:     0,
-		ListenAddr: ":123",
+	privKey := crypto.GeneratePrivateKey()
+
+	tx := &proto.Transaction{
+		Version: 1,
+		Inputs: []*proto.TxInput{
+			{
+				PrevTxHash:   util.RandomHash(),
+				PrevOutIndex: 0,
+				PublicKey:    privKey.Public().Bytes(),
+			},
+		},
+		Outputs: []*proto.TxOutput{
+			{
+				Amount:    99,
+				ToAddress: privKey.Public().Bytes(),
+			},
+		},
 	}
 
-	_, err = c.Handshake(context.Background(), tx)
+	_, err = c.HandleTransaction(context.Background(), tx)
 	if err != nil {
 		panic(err)
 	}

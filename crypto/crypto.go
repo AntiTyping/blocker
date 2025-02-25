@@ -77,7 +77,7 @@ func PublicKeyFromBytes(b []byte) *PublicKey {
 	}
 }
 
-func (p *PublicKey) Butes() []byte {
+func (p *PublicKey) Bytes() []byte {
 	return p.key
 }
 
