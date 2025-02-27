@@ -4,9 +4,11 @@ import (
 	"blocker/crypto"
 	"blocker/proto"
 	"blocker/util"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func randomBlock(chain *Chain) *proto.Block {
@@ -20,7 +22,7 @@ func randomBlock(chain *Chain) *proto.Block {
 }
 
 func TestNewChain(t *testing.T) {
-	chain := NewChain(NewMemoryBlockStore())
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 
 	assert.Equal(t, 0, chain.Height())
 
@@ -31,7 +33,7 @@ func TestNewChain(t *testing.T) {
 }
 
 func TestAddBlock(t *testing.T) {
-	chain := NewChain(NewMemoryBlockStore())
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 	block := randomBlock(chain)
 	blockHash := HashBlock(block)
 
@@ -42,7 +44,7 @@ func TestAddBlock(t *testing.T) {
 }
 
 func TestHeight(t *testing.T) {
-	chain := NewChain(NewMemoryBlockStore())
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 
 	assert.Equal(t, 0, chain.Height())
 
@@ -55,7 +57,7 @@ func TestHeight(t *testing.T) {
 }
 
 func TestGetBlockByHash(t *testing.T) {
-	chain := NewChain(NewMemoryBlockStore())
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 
 	first := randomBlock(chain)
 	chain.AddBlock(first)
@@ -71,7 +73,7 @@ func TestGetBlockByHash(t *testing.T) {
 }
 
 func TestGetBlockByHeight(t *testing.T) {
-	chain := NewChain(NewMemoryBlockStore())
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 
 	first := randomBlock(chain)
 	chain.AddBlock(first)
@@ -84,4 +86,73 @@ func TestGetBlockByHeight(t *testing.T) {
 	actualSecond, err := chain.GetBlockByHeight(2)
 	assert.Nil(t, err)
 	assert.Equal(t, second, actualSecond)
+}
+
+func TestCreateGenesisBlock(t *testing.T) {
+	block := createGenesisBlock()
+
+	assert.Equal(t, 1, len(block.Transactions))
+
+	tx := block.Transactions[0]
+	assert.Equal(t, int64(1000), tx.Outputs[0].Amount)
+
+	sig := crypto.SignatureFromBytes(block.Signature)
+	assert.True(t, sig.Verify(Factory{}.CreateGenesisPrivateKey().Public(), HashBlock(block)))
+}
+
+func TestAddBlockWithTx(t *testing.T) {
+	// tx must be signed
+	// cannot double spend
+	// cannot overspend
+	// must have previous output
+
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
+	block := randomBlock(chain)
+	privKey := Factory{}.CreateGenesisPrivateKey()
+	to := Factory{}.CreateAddress()
+
+	require.Equal(t, 0, chain.Height())
+
+	ftt, err := chain.txStore.Get("1c420f88a4b9f2c6c9615abedc6c1be07623b0ec71cde5e50be244250ccd5808")
+	if err != nil {
+		panic(err)
+	}
+
+	//prevTx :=
+	inputs := []*proto.TxInput{
+		{
+			PrevTxHash:   HashTransaction(ftt),
+			PublicKey:    privKey.Public().Bytes(),
+			PrevOutIndex: 0,
+		},
+	}
+	outputs := []*proto.TxOutput{
+		{
+			Amount:    100,
+			ToAddress: to,
+		},
+		{
+			Amount:    900,
+			ToAddress: privKey.Public().Address().Bytes(),
+		},
+	}
+
+	tx := proto.Transaction{
+		Version: 1,
+		Inputs:  inputs,
+		Outputs: outputs,
+	}
+
+	block.Transactions = []*proto.Transaction{&tx}
+
+	err = chain.AddBlock(block)
+	require.Nil(t, err)
+	require.Equal(t, 1, chain.Height())
+
+	txHash := hex.EncodeToString(HashTransaction(&tx))
+
+	fetchedTx, err := chain.txStore.Get(txHash)
+	assert.Nil(t, err)
+	assert.NotNil(t, fetchedTx)
+	assert.Equal(t, tx, *fetchedTx)
 }
