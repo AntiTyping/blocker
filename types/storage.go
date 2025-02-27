@@ -42,6 +42,43 @@ func (s *MemoryTXStore) Get(hash string) (*proto.Transaction, error) {
 	return tx, nil
 }
 
+type UTXOStorer interface {
+	Put(tx *UTXO) error
+	Get(hash string) (*UTXO, error)
+}
+
+type MemoryUTXOStore struct {
+	lock sync.RWMutex
+	txx  map[string]*UTXO
+}
+
+func NewMemoryUTXOStore() *MemoryUTXOStore {
+	return &MemoryUTXOStore{
+		txx: make(map[string]*UTXO),
+	}
+}
+
+func (s *MemoryUTXOStore) Put(utxo *UTXO) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	key := fmt.Sprintf("%s_%d", utxo.Hash, utxo.OutIndex)
+	s.txx[key] = utxo
+
+	return nil
+}
+
+func (s *MemoryUTXOStore) Get(hash string) (*UTXO, error) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	tx, ok := s.txx[hash]
+	if !ok {
+		return nil, fmt.Errorf("could not find UXTO")
+	}
+	return tx, nil
+}
+
 type BlockStorer interface {
 	Put(*proto.Block) error
 	Get(string) (*proto.Block, error)

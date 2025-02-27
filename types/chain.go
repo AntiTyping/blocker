@@ -42,9 +42,17 @@ func (l *HeaderList) Height() int {
 	return l.Len()
 }
 
+type UTXO struct {
+	Hash     string
+	OutIndex int
+	Amount   int64
+	Spent    bool
+}
+
 type Chain struct {
 	blockStore BlockStorer
 	txStore    TXStorer
+	uxtoStore  UTXOStorer
 	headers    *HeaderList
 }
 
@@ -52,6 +60,7 @@ func NewChain(bs BlockStorer, ts TXStorer) *Chain {
 	chain := &Chain{
 		blockStore: bs,
 		txStore:    ts,
+		uxtoStore:  NewMemoryUTXOStore(),
 		headers:    NewHeaderList(),
 	}
 	chain.addBlock(createGenesisBlock())
@@ -70,9 +79,19 @@ func (c *Chain) addBlock(b *proto.Block) error {
 
 	for _, tx := range b.Transactions {
 		err := c.txStore.Put(tx)
-		fmt.Println(hex.EncodeToString(HashTransaction(tx)))
 		if err != nil {
 			return err
+		}
+
+		hash := hex.EncodeToString(HashTransaction(tx))
+		for idx, output := range tx.Outputs {
+			utxo := &UTXO{
+				Hash:     hash,
+				OutIndex: idx,
+				Amount:   output.Amount,
+				Spent:    false,
+			}
+			c.uxtoStore.Put(utxo)
 		}
 	}
 	return c.blockStore.Put(b)
@@ -101,9 +120,12 @@ func (c *Chain) GetBlockByHash(hash []byte) (*proto.Block, error) {
 }
 
 func (c *Chain) ValidateBlock(b *proto.Block) error {
+	// validate the signature of the block
 	if !VerifyBlock(b) {
 		return fmt.Errorf("invalid block")
 	}
+
+	// validate if the prevHas is the actual has of the current block
 	currentBlock, err := c.GetBlockByHeight(c.Height())
 	if err != nil {
 		return err
@@ -111,6 +133,54 @@ func (c *Chain) ValidateBlock(b *proto.Block) error {
 	hash := HashBlock(currentBlock)
 	if !bytes.Equal(hash, b.Header.PreviousHash) {
 		return fmt.Errorf("invlid previous hash")
+	}
+
+	// validate transactions
+	for _, tx := range b.Transactions {
+		if err := c.ValidateTransaction(tx); err != nil {
+
+		}
+	}
+	return nil
+}
+
+func (c *Chain) ValidateTransaction(tx *proto.Transaction) error {
+	if !VerifyTransaction(tx) {
+		return fmt.Errorf("invalid tx ")
+	}
+
+	txHash := hex.EncodeToString(HashTransaction(tx))
+	// check if all outputs are present and unspent
+	nOutputs := len(tx.Outputs)
+	var sumOutputs int64
+	for i := 0; i < nOutputs; i++ {
+		key := fmt.Sprintf("%s_%d", txHash, i)
+		utxo, err := c.uxtoStore.Get(key)
+		if err != nil {
+			return err
+		}
+		if utxo.Spent {
+			return fmt.Errorf("output is already spent")
+		}
+		sumOutputs += tx.Outputs[i].Amount
+	}
+
+	// check if all inputs are unspent
+	nInputs := len(tx.Inputs)
+	var sumInputs int64
+	for i := 0; i < nInputs; i++ {
+		key := fmt.Sprintf("%s_%d", hex.EncodeToString(tx.Inputs[i].PrevTxHash), tx.Inputs[i].PrevOutIndex)
+		utxo, err := c.uxtoStore.Get(key)
+		if err != nil {
+			return err
+		}
+		if utxo.Spent {
+			return fmt.Errorf("input is already delayed")
+		}
+		sumInputs += utxo.Amount
+	}
+	if sumInputs != sumOutputs {
+		return fmt.Errorf("insufficient balance inputs are %d and outputs are %d", sumInputs, sumOutputs)
 	}
 	return nil
 }

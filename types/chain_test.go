@@ -5,6 +5,7 @@ import (
 	"blocker/proto"
 	"blocker/util"
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -118,7 +119,6 @@ func TestAddBlockWithTx(t *testing.T) {
 		panic(err)
 	}
 
-	//prevTx :=
 	inputs := []*proto.TxInput{
 		{
 			PrevTxHash:   HashTransaction(ftt),
@@ -143,6 +143,8 @@ func TestAddBlockWithTx(t *testing.T) {
 		Outputs: outputs,
 	}
 
+	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
+
 	block.Transactions = []*proto.Transaction{&tx}
 
 	err = chain.AddBlock(block)
@@ -155,4 +157,111 @@ func TestAddBlockWithTx(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, fetchedTx)
 	assert.Equal(t, tx, *fetchedTx)
+
+	nOutputs := len(tx.Outputs)
+	for i := 0; i < nOutputs; i++ {
+		key := fmt.Sprintf("%s_%d", txHash, i)
+		utxo, err := chain.uxtoStore.Get(key)
+		assert.Nil(t, err)
+		assert.Equal(t, outputs[i].Amount, utxo.Amount)
+		assert.False(t, utxo.Spent)
+	}
+}
+
+func TestValidateTransaction(t *testing.T) {
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
+	block := randomBlock(chain)
+	privKey := Factory{}.CreateGenesisPrivateKey()
+	to := Factory{}.CreateAddress()
+
+	require.Equal(t, 0, chain.Height())
+
+	ftt, err := chain.txStore.Get("1c420f88a4b9f2c6c9615abedc6c1be07623b0ec71cde5e50be244250ccd5808")
+	if err != nil {
+		panic(err)
+	}
+
+	inputs := []*proto.TxInput{
+		{
+			PrevTxHash:   HashTransaction(ftt),
+			PublicKey:    privKey.Public().Bytes(),
+			PrevOutIndex: 0,
+		},
+	}
+	outputs := []*proto.TxOutput{
+		{
+			Amount:    100,
+			ToAddress: to,
+		},
+		{
+			Amount:    900,
+			ToAddress: privKey.Public().Address().Bytes(),
+		},
+	}
+
+	tx := proto.Transaction{
+		Version: 1,
+		Inputs:  inputs,
+		Outputs: outputs,
+	}
+
+	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
+
+	block.Transactions = []*proto.Transaction{&tx}
+
+	err = chain.AddBlock(block)
+	require.Nil(t, err)
+	require.Equal(t, 1, chain.Height())
+
+	assert.Nil(t, chain.ValidateTransaction(&tx))
+}
+
+func TestAddTransactionWithInsufficientInputs(t *testing.T) {
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
+	block := randomBlock(chain)
+	privKey := Factory{}.CreateGenesisPrivateKey()
+	to := Factory{}.CreateAddress()
+
+	require.Equal(t, 0, chain.Height())
+
+	ftt, err := chain.txStore.Get("1c420f88a4b9f2c6c9615abedc6c1be07623b0ec71cde5e50be244250ccd5808")
+	if err != nil {
+		panic(err)
+	}
+
+	inputs := []*proto.TxInput{
+		{
+			PrevTxHash:   HashTransaction(ftt),
+			PublicKey:    privKey.Public().Bytes(),
+			PrevOutIndex: 0,
+		},
+	}
+	outputs := []*proto.TxOutput{
+		{
+			Amount:    1000,
+			ToAddress: to,
+		},
+		{
+			Amount:    900,
+			ToAddress: privKey.Public().Address().Bytes(),
+		},
+	}
+
+	tx := proto.Transaction{
+		Version: 1,
+		Inputs:  inputs,
+		Outputs: outputs,
+	}
+
+	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
+
+	block.Transactions = []*proto.Transaction{&tx}
+
+	err = chain.AddBlock(block)
+	require.Nil(t, err)
+	require.Equal(t, 1, chain.Height())
+
+	err = chain.ValidateTransaction(&tx)
+	assert.NotNil(t, err)
+	assert.Equal(t, fmt.Errorf("insufficient balance inputs are 1000 and outputs are 1900"), err)
 }
