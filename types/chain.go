@@ -121,8 +121,12 @@ func (c *Chain) GetBlockByHash(hash []byte) (*proto.Block, error) {
 
 func (c *Chain) ValidateBlock(b *proto.Block) error {
 	// validate the signature of the block
-	if !VerifyBlock(b) {
-		return fmt.Errorf("invalid block")
+	verified, err := VerifyBlock(b)
+	if err != nil {
+		return err
+	}
+	if !verified {
+		return fmt.Errorf("unable to verify block")
 	}
 
 	// validate if the prevHas is the actual has of the current block

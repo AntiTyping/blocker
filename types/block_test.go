@@ -13,12 +13,16 @@ func TestVerifyBlock(t *testing.T) {
 	block := util.RandomBlock()
 	block.Signature = SignBlock(pk, block).Bytes()
 
-	assert.True(t, VerifyBlock(block))
+	verified, err := VerifyBlock(block)
+	assert.Nil(t, err)
+	assert.True(t, verified)
 
 	invalidPk := crypto.GeneratePrivateKey()
 	block.PublicKey = invalidPk.Public().Bytes()
 
-	assert.False(t, VerifyBlock(block))
+	verified, err = VerifyBlock(block)
+	assert.NotNil(t, err)
+	assert.False(t, verified)
 }
 
 func TestHashBlock(t *testing.T) {

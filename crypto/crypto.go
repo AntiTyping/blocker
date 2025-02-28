@@ -54,6 +54,12 @@ func (p *PrivateKey) Bytes() []byte {
 	return p.key
 }
 
+func PrivateKeyFromBytes(b []byte) *PrivateKey {
+	return &PrivateKey{
+		key: b,
+	}
+}
+
 func (p *PrivateKey) Sign(msg []byte) *Signature {
 	return &Signature{
 		value: ed25519.Sign(p.key, msg),

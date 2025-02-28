@@ -77,7 +77,8 @@ func TestGetBlockByHeight(t *testing.T) {
 	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 
 	first := randomBlock(chain)
-	chain.AddBlock(first)
+	err := chain.AddBlock(first)
+	assert.Nil(t, err)
 	actualFirst, err := chain.GetBlockByHeight(1)
 	assert.Nil(t, err)
 	assert.Equal(t, first, actualFirst)
@@ -143,10 +144,15 @@ func TestAddBlockWithTx(t *testing.T) {
 		Outputs: outputs,
 	}
 
-	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
-
 	block.Transactions = []*proto.Transaction{&tx}
 
+	tree, err := GetMerkleTree(block)
+	assert.Nil(t, err)
+	block.Header.RootHash = tree.MerkleRoot()
+
+	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
+
+	SignBlock(privKey, block)
 	err = chain.AddBlock(block)
 	require.Nil(t, err)
 	require.Equal(t, 1, chain.Height())
@@ -209,6 +215,8 @@ func TestValidateTransaction(t *testing.T) {
 
 	block.Transactions = []*proto.Transaction{&tx}
 
+	SignBlock(privKey, block)
+
 	err = chain.AddBlock(block)
 	require.Nil(t, err)
 	require.Equal(t, 1, chain.Height())
@@ -257,6 +265,7 @@ func TestAddTransactionWithInsufficientInputs(t *testing.T) {
 
 	block.Transactions = []*proto.Transaction{&tx}
 
+	SignBlock(privKey, block)
 	err = chain.AddBlock(block)
 	require.Nil(t, err)
 	require.Equal(t, 1, chain.Height())
