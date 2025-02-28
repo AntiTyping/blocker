@@ -224,6 +224,58 @@ func TestValidateTransaction(t *testing.T) {
 	assert.Nil(t, chain.ValidateTransaction(&tx))
 }
 
+func TestMarkInputsAsSpent(t *testing.T) {
+	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
+	block := randomBlock(chain)
+	privKey := Factory{}.CreateGenesisPrivateKey()
+	to := Factory{}.CreateAddress()
+
+	require.Equal(t, 0, chain.Height())
+
+	ftt, err := chain.txStore.Get("1c420f88a4b9f2c6c9615abedc6c1be07623b0ec71cde5e50be244250ccd5808")
+	if err != nil {
+		panic(err)
+	}
+
+	inputs := []*proto.TxInput{
+		{
+			PrevTxHash:   HashTransaction(ftt),
+			PublicKey:    privKey.Public().Bytes(),
+			PrevOutIndex: 0,
+		},
+	}
+	outputs := []*proto.TxOutput{
+		{
+			Amount:    100,
+			ToAddress: to,
+		},
+		{
+			Amount:    900,
+			ToAddress: privKey.Public().Address().Bytes(),
+		},
+	}
+
+	tx := proto.Transaction{
+		Version: 1,
+		Inputs:  inputs,
+		Outputs: outputs,
+	}
+
+	inputs[0].Signature = privKey.Sign(HashTransaction(&tx)).Bytes()
+
+	block.Transactions = []*proto.Transaction{&tx}
+
+	SignBlock(privKey, block)
+
+	err = chain.AddBlock(block)
+	require.Nil(t, err)
+	require.Equal(t, 1, chain.Height())
+
+	utxo, err := chain.uxtoStore.Get("1c420f88a4b9f2c6c9615abedc6c1be07623b0ec71cde5e50be244250ccd5808_0")
+	assert.Nil(t, err)
+	assert.True(t, utxo.Spent)
+}
+
 func TestAddTransactionWithInsufficientInputs(t *testing.T) {
 	chain := NewChain(NewMemoryBlockStore(), NewMemoryTXStore())
 	block := randomBlock(chain)
